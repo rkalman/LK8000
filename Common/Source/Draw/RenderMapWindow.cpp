@@ -31,38 +31,60 @@ void MapWindow::RenderMapWindow(RECT rc)
 {
   HFONT hfOld;
   static DWORD fastzoomStart=0;
+  static double last_drawscale = 0.0;
+  static double delta_drawscale = 1.0;
   // static short ZoomDelayTimes=0; // alternate rebouncing, with the lowest possible interval: 1 loop
 
   // We do this in order to wait for a late zoom request after another.
   // Did we get a BigZoom request?
   FastZoom=zoom.BigZoom();
   if (FastZoom) {
-	zoom.BigZoom(false);
-	// How many times we shall loop waiting for a next bigzoom to come
-	// ZoomDelayTimes=1; shortest possible
-	fastzoomStart=GetTickCount(); // time granted delay
+  zoom.BigZoom(false);
+  delta_drawscale = zoom.DrawScale() / last_drawscale;
+  SelectObject(hDCTemp, (HBITMAP)hDrawBitMapTmp);
+  BitBlt(hDCTemp, 0, 0, MapRect.right-MapRect.left, MapRect.bottom-MapRect.top, hdcDrawWindow, 0, 0, SRCCOPY);
+  // How many times we shall loop waiting for a next bigzoom to come
+  // ZoomDelayTimes=1; shortest possible
+  fastzoomStart=GetTickCount(); // time granted delay
   } else {
-	if (fastzoomStart) {
-		// no bigzoom, but we wait a bit to detect another click for zoom
-		// and avoid to redraw entirely in the meantime. We shall fall down here
-		// because we have forced a map redraw after the first zoom, even with not
-		// a click pressed.
-		//if (ZoomDelayTimes >0) {
-		//	ZoomDelayTimes--;
-		if ( (GetTickCount()-fastzoomStart) <350 ) {
-			#if (WINDOWSPC>0)	
-			  #if TESTBENCH
-			  FastZoom=true;
-			  #endif
-			#else
-			  FastZoom=true;
-			#endif
-		} else {
-			fastzoomStart=0;
-		}
-	} 
+  if (fastzoomStart) {
+    // no bigzoom, but we wait a bit to detect another click for zoom
+    // and avoid to redraw entirely in the meantime. We shall fall down here
+    // because we have forced a map redraw after the first zoom, even with not
+    // a click pressed.
+    //if (ZoomDelayTimes >0) {
+    //  ZoomDelayTimes--;
+    if ( (GetTickCount()-fastzoomStart) <350 ) {
+      #if (WINDOWSPC>0) 
+        #if TESTBENCH
+        FastZoom=true;
+        #endif
+      #else
+        FastZoom=true;
+      #endif
+    } else {
+      fastzoomStart=0;
+    }
+  } 
   }
-
+  last_drawscale = zoom.DrawScale();
+  
+  if (FastZoom) {
+    int dx = MapRect.right-MapRect.left;
+    int dy = MapRect.bottom-MapRect.top;
+    if (delta_drawscale > 1.0) {
+      // Zoom in
+      StretchBlt(hdcDrawWindow, 0, 0, dx, dy, 
+          hDCTemp, (dx/2) - (dx/delta_drawscale)/2, (dy/2) - (dy / delta_drawscale)/2, dx / delta_drawscale, dy / delta_drawscale , SRCCOPY);
+    } else {
+      // Zoom out
+      StretchBlt(hdcDrawWindow, (dx/2) - (dx*delta_drawscale)/2, (dy/2) - (dy*delta_drawscale)/2, dx * delta_drawscale, dy * delta_drawscale, 
+          hDCTemp, 0, 0, dx, dy, SRCCOPY);
+    }
+    MapWindow::RefreshMap();
+   return;
+  }
+  
   MapWindow::UpdateTimeStats(true);
 
   if (LockModeStatus) LockMode(9); // check if unlock is now possible 
